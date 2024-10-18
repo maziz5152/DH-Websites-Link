@@ -24,8 +24,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             const availableUrl = await checkUrlsInOrder(sortedUrls);
-            //window.location.href = availableUrl;
-			window.open(availableUrl, '_blank');
+            window.open(availableUrl, '_blank');
         } catch (error) {
             console.error('All URLs failed:', error);
             showErrorMessage(cardTitle);
@@ -37,8 +36,8 @@ document.addEventListener('DOMContentLoaded', function() {
     async function checkUrlsInOrder(urls) {
         for (const urlData of urls) {
             try {
-                await checkUrl(urlData.url);
-                return urlData.url;
+                const availableUrl = await checkUrl(urlData.url);
+                return availableUrl;
             } catch (error) {
                 console.error(`URL ${urlData.url} failed:`, error);
             }
@@ -51,16 +50,30 @@ document.addEventListener('DOMContentLoaded', function() {
         const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
         try {
-            const response = await fetch(url, {
+            // Try HTTPS first
+            const httpsUrl = url.startsWith('http') ? url : `https://${url}`;
+            const response = await fetch(httpsUrl, {
                 method: 'HEAD',
                 mode: 'no-cors',
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
-            return url;
-        } catch (error) {
-            clearTimeout(timeoutId);
-            throw error;
+            return httpsUrl;
+        } catch (httpsError) {
+            // If HTTPS fails, try HTTP
+            try {
+                const httpUrl = url.startsWith('http') ? url.replace('https://', 'http://') : `http://${url}`;
+                const response = await fetch(httpUrl, {
+                    method: 'HEAD',
+                    mode: 'no-cors',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                return httpUrl;
+            } catch (httpError) {
+                clearTimeout(timeoutId);
+                throw httpError;
+            }
         }
     }
 
@@ -96,16 +109,20 @@ document.addEventListener('DOMContentLoaded', function() {
     function performSearch() {
         const searchTerm = searchInput.value.toLowerCase().trim();
         let foundMatch = false;
+        const cardContainer = document.querySelector('.row-cols-1');
+        const cols = cardContainer.querySelectorAll('.col');
 
-        cards.forEach(card => {
+        cols.forEach(col => {
+            const card = col.querySelector('.card');
             const cardTitle = card.querySelector('.card-title').textContent.toLowerCase();
             if (cardTitle.includes(searchTerm)) {
-                card.style.display = 'block';
+                col.style.display = 'flex';
                 foundMatch = true;
             } else {
-                card.style.display = 'none';
+                col.style.display = 'none';
             }
         });
+
         let noResultsMessage = document.getElementById('no-results-message');
         if (!foundMatch) {
             if (!noResultsMessage) {
@@ -113,7 +130,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 noResultsMessage.id = 'no-results-message';
                 noResultsMessage.className = 'alert alert-info mt-4 text-center';
                 noResultsMessage.textContent = 'No matching websites found. Please try a different search term.';
-                document.querySelector('.row-cols-1').insertAdjacentElement('beforebegin', noResultsMessage);
+                cardContainer.insertAdjacentElement('beforebegin', noResultsMessage);
             }
         } else if (noResultsMessage) {
             noResultsMessage.remove();
